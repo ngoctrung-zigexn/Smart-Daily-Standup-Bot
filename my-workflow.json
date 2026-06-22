@@ -1,0 +1,345 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -128
+      ],
+      "id": "ec871da1-c643-4623-9cf3-30baad86dbc0",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "connectionMode": "docker",
+        "prompt": "==Bạn là trợ lý standup. Dựa trên hoạt động dưới đây, viết một bản standup tiếng Việt ngắn gọn theo đúng format:\n\n📋 Daily Standup — {{ $now.format('yyyy-MM-dd') }}\n\nHôm qua:\n- (những việc đã làm, suy ra từ commit đã merge và issue done_ratio cao)\n\nHôm nay:\n- (việc đang làm hoặc sắp làm, suy ra từ issue In Progress / New)\n\nBlockers:\n- (nếu có dấu hiệu vướng mắc; nếu không thì ghi \"Không có\")\n\nChỉ trả về bản standup, không giải thích thêm. Dựa vào dữ liệu thật, không bịa.\n\nHoạt động:\n{{ $json.activity }}",
+        "toolPermissions": {},
+        "agents": {
+          "agentsList": []
+        },
+        "mcpServers": {
+          "serversList": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-claude-code-cli.claudeCode",
+      "typeVersion": 1,
+      "position": [
+        480,
+        -96
+      ],
+      "id": "68a06a8c-fa06-4be8-87e1-4134d5e592f6",
+      "name": "Claude Code",
+      "credentials": {
+        "claudeCodeDockerApi": {
+          "id": "wtuLwVdx3IusNrLU",
+          "name": "Claude Code Local account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/ngoctrung-zigexn/react-portfolio-template/commits",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "per_page",
+              "value": "20"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-standup"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -176,
+        -96
+      ],
+      "id": "a2f40097-1f71-45f4-adf9-c911aa31150e",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "F8xvK5MJ5klXcCoz",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://dev.zigexn.vn/issues.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "assigned_to_id",
+              "value": "me"
+            },
+            {
+              "name": "status_id",
+              "value": "*"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Redmine-API-Key",
+              "value": "face66fec847e80c4090a52803c4cc031379d156"
+            },
+            {
+              "name": "Authorization",
+              "value": "Basic emlnZXhuOkRxYjJvNzg5OTVscQ=="
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -16,
+        80
+      ],
+      "id": "0c27cdf1-34b5-4c4e-a5cf-c85109cddf8d",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "resource": "channel",
+        "operation": "history",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AQ7GLAWEB",
+          "mode": "id"
+        },
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        128,
+        -112
+      ],
+      "id": "66c97cdf-c771-476b-bf75-0c52231054c6",
+      "name": "Get the history of a channel",
+      "webhookId": "8760c688-2f36-45c8-b157-27adbec45365",
+      "credentials": {
+        "slackApi": {
+          "id": "chX83pimjwm9QVK8",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lấy dữ liệu từ 3 nguồn\nconst commits = $('HTTP Request').all();\nconst issues = $('HTTP Request1').first().json.issues || [];\nconst messages = $('Get the history of a channel').all();\n\n// --- GitHub commits ---\nconst githubLines = commits.map(c => {\n  const msg = (c.json.commit?.message || '').split('\\n')[0];\n  const date = c.json.commit?.author?.date || '';\n  return `- ${msg} (${date.slice(0, 10)})`;\n}).filter(l => l.length > 5);\n\n// --- Redmine issues ---\nconst redmineLines = issues.map(i => {\n  return `- #${i.id} [${i.status.name}, ${i.done_ratio}%] ${i.subject} (updated ${i.updated_on.slice(0, 10)})`;\n});\n\n// --- Slack messages (lọc rác) ---\nconst slackLines = messages\n  .filter(m => !m.json.subtype && m.json.text && m.json.text.trim().length > 0)\n  .map(m => `- ${m.json.text.replace(/\\n/g, ' ').slice(0, 200)}`)\n  .slice(0, 15);\n\n// --- Gộp thành activity string ---\nconst activity = `\n=== GITHUB COMMITS ===\n${githubLines.length ? githubLines.join('\\n') : '(không có commit)'}\n\n=== REDMINE ISSUES ===\n${redmineLines.length ? redmineLines.join('\\n') : '(không có issue)'}\n\n=== SLACK MESSAGES ===\n${slackLines.length ? slackLines.join('\\n') : '(không có message)'}\n`.trim();\n\nreturn [{ json: { activity } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        80
+      ],
+      "id": "42504401-8c49-4b67-b3a1-8113b854723c",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AQ7GLAWEB",
+          "mode": "id"
+        },
+        "text": "=={{ $json.output }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        688,
+        -96
+      ],
+      "id": "790f7dd5-a03e-4de9-89a0-1f3413da9e56",
+      "name": "Send a message",
+      "webhookId": "22d5ee29-c1ca-4a19-8801-beb5efbb5534",
+      "credentials": {
+        "slackApi": {
+          "id": "sWQU4Mt4GoHCYQYr",
+          "name": "Slack account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "run-standup",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -384,
+        32
+      ],
+      "id": "fe05e8e2-2a18-4a41-951d-4897e3638520",
+      "name": "Webhook",
+      "webhookId": "d0a2bfa2-be8f-4d82-87e8-40017e2395d6"
+    },
+    {
+      "parameters": {
+        "path": "standup"
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 2,
+      "position": [
+        608,
+        128
+      ],
+      "id": "59f66508-fcff-4776-a664-f9d3c00f1cd2",
+      "name": "MCP Server Trigger",
+      "webhookId": "92fd57ba-21be-468f-8594-142665a6a8b1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Chạy workflow standup hằng ngày: fetch GitHub + Redmine + Slack, tạo standup bằng Claude và post lên Slack. Gọi khi người dùng nói \"run my standup\" hoặc tương tự.",
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/run-standup",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        704,
+        336
+      ],
+      "id": "c75beb72-321f-4bf6-a80c-09cc45238c5a",
+      "name": "run_standup_workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Code": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Get the history of a channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get the history of a channel": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Claude Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run_standup_workflow": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "4cb47972-0eed-422f-9238-2593396c4d4b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "193baa18969cc71c823430eeca659324852f1cf2b14bb127811daeddb7d314c4"
+  },
+  "nodeGroups": [],
+  "id": "3Mon6C6AGr6BCbav",
+  "tags": []
+}
