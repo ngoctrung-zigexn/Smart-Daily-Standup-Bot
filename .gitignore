@@ -1,0 +1,6 @@
+claude-config/
+*.credentials.json
+.credentials.json
+.env
+*.key
+node_modules/
